@@ -1,0 +1,237 @@
+"""
+Loadshift development and CI environment.
+
+Responsibilities:
+- Reproducible Rust builds.
+- Native HiGHS compilation inside Dagger.
+- Formatting, linting, testing, and release checks.
+- Optional profiling-feature validation.
+- Local HTTP API service.
+"""
+
+type LoadshiftCi {
+  source: Directory!
+
+  new(ws: Workspace!) {
+    self.source = ws.directory(
+      "/",
+      exclude: [
+        ".git",
+        ".jj",
+        ".dagger",
+        "target",
+        ".env",
+        ".env.*",
+        ".secrets",
+      ],
+    )
+    self
+  }
+
+  """
+  Shared Rust build environment.
+
+  Native dependencies required by HiGHS and bindgen
+  are installed here, not on the host machine.
+  """
+  let rustEnv: Container! {
+    container
+      .from("rust:1.100-slim-bookworm")
+
+      # Install native build dependencies.
+      .withExec(["apt-get", "update"])
+      .withExec([
+        "apt-get",
+        "install",
+        "--yes",
+        "--no-install-recommends",
+        "build-essential",
+        "cmake",
+        "pkg-config",
+        "libclang-dev",
+      ])
+
+      # bindgen needs to locate the libclang shared library.
+      # Debian Bookworm provides LLVM 14 through libclang-dev.
+      .withEnvVariable(
+        "LIBCLANG_PATH",
+        "/usr/lib/llvm-14/lib",
+      )
+
+      # Remove apt package indexes to reduce image size.
+      .withExec([
+        "sh",
+        "-c",
+        "rm -rf /var/lib/apt/lists/*",
+      ])
+
+      # Rust development components.
+      .withExec([
+        "rustup",
+        "component",
+        "add",
+        "clippy",
+        "rustfmt",
+      ])
+
+      # Persistent Cargo dependency caches.
+      .withMountedCache(
+        "/usr/local/cargo/registry",
+        cacheVolume("loadshift-cargo-registry"),
+      )
+      .withMountedCache(
+        "/usr/local/cargo/git",
+        cacheVolume("loadshift-cargo-git"),
+      )
+
+      # Mount the project source.
+      .withMountedDirectory(
+        "/workspace",
+        source,
+      )
+
+      # Persistent compilation cache.
+      .withMountedCache(
+        "/workspace/target",
+        cacheVolume("loadshift-target"),
+      )
+
+      .withWorkdir("/workspace")
+  }
+
+  """
+  Check that the complete workspace compiles.
+  """
+  check: Void @check {
+    rustEnv
+      .withExec([
+        "cargo",
+        "check",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+      ])
+      .sync
+
+    null
+  }
+
+  """
+  Verify Rust formatting.
+  """
+  fmt: Void @check {
+    rustEnv
+      .withExec([
+        "cargo",
+        "fmt",
+        "--all",
+        "--check",
+      ])
+      .sync
+
+    null
+  }
+
+  """
+  Run Clippy across the complete workspace.
+  Treat warnings as errors.
+  """
+  clippy: Void @check {
+    rustEnv
+      .withExec([
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--",
+        "-D",
+        "warnings",
+      ])
+      .sync
+
+    null
+  }
+
+  """
+  Run the complete test suite using Cargo Nextest.
+  """
+  test: Void @check {
+    rustEnv
+      .withExec([
+        "cargo",
+        "install",
+        "cargo-nextest",
+        "--version",
+        "0.9.152",
+        "--locked",
+        "--root",
+        "/usr/local",
+      ])
+      .withExec([
+        "cargo",
+        "nextest",
+        "run",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+      ])
+      .sync
+
+    null
+  }
+
+  """
+  Verify that the optional profiling feature compiles.
+  """
+  profiling: Void @check {
+    rustEnv
+      .withExec([
+        "cargo",
+        "check",
+        "--package",
+        "loadshift-optimization",
+        "--features",
+        "profiling",
+        "--locked",
+      ])
+      .sync
+
+    null
+  }
+
+  """
+  Build the complete workspace using release settings.
+  """
+  release: Void @check {
+    rustEnv
+      .withExec([
+        "cargo",
+        "build",
+        "--workspace",
+        "--release",
+        "--locked",
+      ])
+      .sync
+
+    null
+  }
+
+  """
+  Run the Loadshift HTTP API.
+
+  Dagger exposes the container service on port 3000.
+  """
+  api: Service! {
+    rustEnv
+      .withExec([
+        "cargo",
+        "run",
+        "--locked",
+        "--package",
+        "loadshift-api",
+      ])
+      .withExposedPort(3000)
+      .asService
+  }
+}

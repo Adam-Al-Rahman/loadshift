@@ -1,0 +1,12 @@
+[modules.dang-sdk]
+source = "dagger.io/sdk/dang"
+
+[sdks.dang]
+module = "dang-sdk"
+
+[modules.loadshift-ci]
+source = ".dagger/modules/loadshift-ci"
+
+[sdks.dang.scopes.".dagger/modules/loadshift-ci"]
+is-module = true
+name = "loadshift-ci"
