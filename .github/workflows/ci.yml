@@ -1,0 +1,28 @@
+name: loadshift-ci
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Dagger checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run Dagger checks
+        uses: dagger/dagger-for-github@v8.4.1
+        with:
+          version: "1.0.0-beta.21"
+          check: "**"
