@@ -12,10 +12,20 @@ on:
 permissions:
   contents: read
 
+# Cancel older runs when a newer commit arrives on the same branch or PR.
+concurrency:
+  group: loadshift-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     name: Dagger checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Prevent concurrent Dagger checks from racing over shared Cargo caches.
+    env:
+      DAGGER_CHECK_PARALLEL: "1"
 
     steps:
       - name: Checkout repository
@@ -26,3 +36,4 @@ jobs:
         with:
           version: "1.0.0-beta.21"
           check: "**"
+          enable-github-summary: true

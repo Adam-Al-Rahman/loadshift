@@ -21,9 +21,6 @@ tokio = { version = "1", features = [
     "net",
 ] }
 
-# Optimization
-highs = "2.4.0"
-
 # Serialization
 serde = { version = "1", features = ["derive"] }
 
@@ -32,9 +29,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = [
     "env-filter",
 ] }
-
-# Optional performance profiling
-hotpath = "0.31"
 
 [profile.release]
 lto = "thin"

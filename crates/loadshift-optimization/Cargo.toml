@@ -4,11 +4,3 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-
-[dependencies]
-highs.workspace = true
-hotpath = { workspace = true, optional = true }
-
-[features]
-default = []
-profiling = ["dep:hotpath", "hotpath/hotpath"]
